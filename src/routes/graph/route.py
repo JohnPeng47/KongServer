@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from fastapi import APIRouter
 
-from .schema import GraphMetadataResp, GraphNode
+from .schema import GraphMetadataResp, GraphNode, RFNode, rfnode_to_kgnode
 from .db import get_graph_metadata_db, get_graph_db, delete_graph_db, delete_graph_metadata_db 
 
 from fastapi.requests import Request
@@ -19,9 +19,6 @@ from langchain import LLMChain, PromptTemplate, OpenAI
 
 router = APIRouter()
 
-# def merge(graphA: GraphNode, graphB: GraphNode):
-
-
 
 @router.get("/metadata/", response_model=List[GraphMetadataResp])
 def get_graph_metadata():
@@ -38,17 +35,15 @@ def get_graph(graph_id: str, request: Request):
     if not request.app.curr_graph or request.app.curr_graph != graph_id:
         request.app.curr_graph = KnowledgeGraph.load_graph(graph_id)
     
-    return json.loads(request.app.curr_graph.to_json_tree_repr())
+    return json.loads(request.app.curr_graph.to_json_frontend())
 
-# this route results in a response 405
 @router.post("/graph/update")
-def update_graph(graph: GraphNode, request: Request):
-    old_id = graph.id
-    
+def update_graph(graph: RFNode, request: Request):    
     kg: KnowledgeGraph = request.app.curr_graph
-    old_node = kg.get_node(old_id)
-    print("old_node", old_node)
-    kg.add_node(graph.dict(), old_node, merge=True)
+    
+    kg_graph = rfnode_to_kgnode(graph)
+    print(kg_graph)
+    kg.add_node(kg_graph, merge=True)
 
 @router.get("/graph/delete/{graph_id}")
 def delete_graph(graph_id: str, request: Request):
@@ -61,8 +56,10 @@ def gen_subgraph(subgraph: GraphNode, request: Request):
 
     kg: KnowledgeGraph = request.app.curr_graph
 
+    print("Tree: ", kg.display_tree())   
+
     kg.add_node(subgraph.dict(), merge=True)
-    subtree = kg.display_tree(subgraph.id)   
+    subtree = kg.display_tree(subgraph.id)
     subtree_node_old = subgraph.dict()
 
     # GENERATE SUBTREE
