@@ -34,15 +34,16 @@ def get_graph_metadata():
 def get_graph(graph_id: str, request: Request):
     if not request.app.curr_graph or request.app.curr_graph != graph_id:
         request.app.curr_graph = KnowledgeGraph.load_graph(graph_id)
-    
-    return json.loads(request.app.curr_graph.to_json_frontend())
 
-@router.post("/graph/update")
-def update_graph(graph: RFNode, request: Request):    
     kg: KnowledgeGraph = request.app.curr_graph
     
-    kg_graph = rfnode_to_kgnode(graph)
-    print(kg_graph)
+    return json.loads(kg.to_json_frontend())
+
+@router.post("/graph/update")
+def update_graph(rf_graph: RFNode, request: Request):    
+    kg: KnowledgeGraph = request.app.curr_graph
+    
+    kg_graph = rfnode_to_kgnode(rf_graph)
     kg.add_node(kg_graph, merge=True)
 
 @router.get("/graph/delete/{graph_id}")
@@ -50,17 +51,17 @@ def delete_graph(graph_id: str, request: Request):
     delete_graph_db(graph_id)
     delete_graph_metadata_db(graph_id)
         
-# this one no error
 @router.post("/gen/subgraph/", response_model=GraphNode)
-def gen_subgraph(subgraph: GraphNode, request: Request):
-
+def gen_subgraph(rf_subgraph: RFNode, request: Request):
     kg: KnowledgeGraph = request.app.curr_graph
+
+    kg_subgraph = rfnode_to_kgnode(rf_subgraph)
 
     print("Tree: ", kg.display_tree())   
 
-    kg.add_node(subgraph.dict(), merge=True)
-    subtree = kg.display_tree(subgraph.id)
-    subtree_node_old = subgraph.dict()
+    kg.add_node(kg_subgraph, merge=True)
+    subtree = kg.display_tree(kg_subgraph["id"])
+    subtree_node_old = kg_subgraph
 
     # GENERATE SUBTREE
     subtree = GenSubTreeQuery(kg.curriculum,
@@ -76,4 +77,4 @@ def gen_subgraph(subgraph: GraphNode, request: Request):
     merge_tree_ids(subtree_node_old, subtree_node_new)
     kg.add_node(subtree_node_new, merge=True)
 
-    return json.loads(kg.to_json_tree_repr())
+    return json.loads(kg.to_json_frontend())
