@@ -28,3 +28,14 @@ def get_graph_db(graph_id: str):
     return db_conn.get_collection("graphs").find_one({
         "id": graph_id,
     })
+
+
+def delete_graph_db(graph_id: str):
+    return db_conn.get_collection("graphs").delete_one({
+        "id": graph_id,
+    })
+
+def delete_graph_metadata_db(graph_id: str):
+    return db_conn.get_collection("graph_metadata").delete_one({
+        "id": graph_id
+    })

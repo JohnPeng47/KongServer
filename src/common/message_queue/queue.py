@@ -2,7 +2,6 @@ from collections import defaultdict
 from src.routes.events.schema import TrackingEvent
 from threading import Lock
 
-
 class LockingDict:
     def __init__(self):
         self.data = defaultdict(list)
@@ -14,7 +13,6 @@ class LockingDict:
 
         with self.locks[key]:
             self.data[key].append(value)
-
 
 class KafkaQueue:
     def __init__(self):
