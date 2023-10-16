@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from fastapi import APIRouter
 
-from .schema import GraphMetadataResp, GraphNode, RFNode, rfnode_to_kgnode
+from .schema import GraphMetadataResp, GraphNode, RFNode, SaveGraphReq, rfnode_to_kgnode
 from .db import get_graph_metadata_db, get_graph_db, delete_graph_db, delete_graph_metadata_db 
 
 from fastapi.requests import Request
@@ -10,7 +10,8 @@ import uuid
 from .utils import merge_tree_ids
 
 from KongBot.bot.base import KnowledgeGraph
-from KongBot.bot.explorationv2.llm import GenSubTreeQuery, Tree2FlatJSONQuery
+from KongBot.bot.explorationv2.llm import GenSubTreeQuery, Tree2FlatJSONQuery, GenSubTreeQueryV2
+from KongBot.bot.adapters.ascii_tree_to_kg import ascii_tree_to_kg
 
 from typing import List
 import json
@@ -40,41 +41,55 @@ def get_graph(graph_id: str, request: Request):
     return json.loads(kg.to_json_frontend())
 
 @router.post("/graph/update")
-def update_graph(rf_graph: RFNode, request: Request):    
+def update_graph(rf_graph: RFNode, request: Request):
+    import random    
     kg: KnowledgeGraph = request.app.curr_graph
     
+    test_file = f"test_delete{random.randint(0,155)}.json"
+    print("Writing to: ", test_file)
+    with open(test_file, "w") as test:
+        test.write(json.dumps(rf_graph.dict(), indent=4))
+
     kg_graph = rfnode_to_kgnode(rf_graph)
     kg.add_node(kg_graph, merge=True)
+    print(kg.display_tree())
 
 @router.get("/graph/delete/{graph_id}")
 def delete_graph(graph_id: str, request: Request):
     delete_graph_db(graph_id)
     delete_graph_metadata_db(graph_id)
-        
+
+@router.post("/graph/save")
+def update_graph(save_req: SaveGraphReq, request: Request):
+    rf_graph, title = save_req.graph, save_req.title
+
+    kg_graph = rfnode_to_kgnode(rf_graph)
+    # assign different ID so it gets saved as a new graph
+    kg_graph["id"] = str(uuid.uuid4())
+
+    new_kg: KnowledgeGraph = KnowledgeGraph("test")
+    new_kg.from_json(kg_graph)
+    new_kg.save_graph(title = title)
+
 @router.post("/gen/subgraph/", response_model=GraphNode)
 def gen_subgraph(rf_subgraph: RFNode, request: Request):
     kg: KnowledgeGraph = request.app.curr_graph
 
-    kg_subgraph = rfnode_to_kgnode(rf_subgraph)
+    rf_subgraph_json = rfnode_to_kgnode(rf_subgraph)
 
-    print("Tree: ", kg.display_tree())   
+    kg.add_node(rf_subgraph_json, merge=True)
+    subtree = kg.display_tree_v2_lineage(rf_subgraph_json["id"])
 
-    kg.add_node(kg_subgraph, merge=True)
-    subtree = kg.display_tree(kg_subgraph["id"])
-    subtree_node_old = kg_subgraph
+    print("Subtree to generate: ", subtree)
 
     # GENERATE SUBTREE
-    subtree = GenSubTreeQuery(kg.curriculum,
+    subtree = GenSubTreeQueryV2(kg.curriculum,
                                 subtree,
                                 model="gpt3").get_llm_output()
-
-    # TODO: need to make all of JSON query LLM implement the same DataNode interface
-    # so we can just add one without running the other to graph
-    # TODO: need to use DataNode more
-    subtree_node_new = Tree2FlatJSONQuery(subtree,
-                                        model="gpt4").get_llm_output()
-    
-    merge_tree_ids(subtree_node_old, subtree_node_new)
+    subtree_node_new = ascii_tree_to_kg(subtree, rf_subgraph_json)
     kg.add_node(subtree_node_new, merge=True)
 
+    print("New subtree: ", kg.display_tree(rf_subgraph_json["id"]))
+
+    ## TODO: consider just returning the subgraph
     return json.loads(kg.to_json_frontend())

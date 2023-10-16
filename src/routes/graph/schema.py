@@ -42,6 +42,10 @@ class RFNode(BaseModel):
     height: Optional[int]
     width: Optional[int]
     
+class SaveGraphReq(BaseModel):
+    title: str
+    graph: RFNode
+
 def rfnode_to_kgnode(node: RFNode):
     node_data = node.data
     node_data.children = [rfnode_to_kgnode(child) for child in node_data.children]
